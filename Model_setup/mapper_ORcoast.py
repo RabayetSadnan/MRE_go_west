@@ -15,10 +15,12 @@ from shapely.geometry import Point, Polygon
 from matplotlib.colors import TwoSlopeNorm
 
 ###User defined variables###
-RTS = [150] #Number of nodes to retain (can be a single number or series of numbers to create different topologies automatically)
+RTS = [80] #Number of nodes to retain (can be a single number or series of numbers to create different topologies automatically)
 MRE = 4 # Number of MRE nodes
 distance_threshold = 30 #Distance threshold in km, restricts algorithm to select any two nodes that are closer than this number (this is used when selecting a single node in each BA)
 distance_threshold2 = 80 #Distance threshold in km, restricts algorithm to select any two nodes that are closer than this number (this is used after we selected a single node in each BA)
+distance_threshold2_gen = 10 # for generator distance threshold
+distance_threshold2_tn = 10 # for transmission distance threshold
 ############################
 
 df_BAs = pd.read_csv('../Data_setup/Time_series_data/BA_data/BAs.csv',header=0)
@@ -327,9 +329,10 @@ df_load_upt.dropna(subset=['Load MW'], inplace=True)
 df_load_upt.index = df_load_upt['Number']
 
 #Listing all states
-coast_states = ['Washington','Oregon','California']
-# coast_states = ['Oregon']
-inland_states = ['Idaho','Nevada','Arizona','Utah','New Mexico','Wyoming','Texas','Colorado','Montana']
+# coast_states = ['Washington','Oregon','California']
+# inland_states = ['Idaho','Nevada','Arizona','Utah','New Mexico','Wyoming','Texas','Colorado','Montana']
+coast_states = ['Oregon']
+inland_states = ['Washington','Idaho','California','Nevada','Arizona','Utah','New Mexico','Wyoming','Texas','Colorado','Montana']
 
 # #Finding total demand at each state
 # total_demand = []
@@ -463,6 +466,8 @@ for NN in RTS:
     else:
         pass
 
+    # Maybe here we need to select the OR nodes?
+
 
     #2 - allocate remaining demand nodes based on MW ranking of individual nodes in coastal states
     unallocated = [i for i in non_zero if i not in nodes_to_avoid]
@@ -480,42 +485,42 @@ for NN in RTS:
 
     #2a: Adding more (10) nodes from OR states:
 
-    l_N_Or = 10
-    OR_node_added = 0
-    while l_N_Or>0:
-        p = int(df_load_ranks.loc[OR_node_added, 'BusName'])
-        my_state = df_BA_states.loc[df_BA_states['Number'] == p]['State'].values[0]
-
-        if my_state=='Oregon':
-            LA = filter_nodes.loc[filter_nodes['Number'] == p, 'Substation Latitude'].values[0]
-            LO = filter_nodes.loc[filter_nodes['Number'] == p, 'Substation Longitude'].values[0]
-            T1 = tuple((LA, LO))
-
-            trigger = 0
-
-            for d in inland_state_nodes:
-                a = filter_nodes.loc[filter_nodes['Number'] == d, 'Substation Latitude'].values[0]
-                b = filter_nodes.loc[filter_nodes['Number'] == d, 'Substation Longitude'].values[0]
-                T2 = tuple((a, b))
-
-                dist = distance.distance(T1, T2).km
-
-                if dist < distance_threshold2:
-                    trigger = 1
-
-            if trigger > 0:
-                OR_node_added += 1
-            else:
-
-                inland_state_nodes.append(int(df_load_ranks.loc[OR_node_added, 'BusName']))
-                OR_node_added += 1
-                l_N_Or += -1
-
-        else:
-            OR_node_added += 1
+    # l_N_Or = 10
+    # OR_node_added = 0
+    # while l_N_Or>0:
+    #     p = int(df_load_ranks.loc[OR_node_added, 'BusName'])
+    #     my_state = df_BA_states.loc[df_BA_states['Number'] == p]['State'].values[0]
+    #
+    #     if my_state=='Oregon':
+    #         LA = filter_nodes.loc[filter_nodes['Number'] == p, 'Substation Latitude'].values[0]
+    #         LO = filter_nodes.loc[filter_nodes['Number'] == p, 'Substation Longitude'].values[0]
+    #         T1 = tuple((LA, LO))
+    #
+    #         trigger = 0
+    #
+    #         for d in inland_state_nodes:
+    #             a = filter_nodes.loc[filter_nodes['Number'] == d, 'Substation Latitude'].values[0]
+    #             b = filter_nodes.loc[filter_nodes['Number'] == d, 'Substation Longitude'].values[0]
+    #             T2 = tuple((a, b))
+    #
+    #             dist = distance.distance(T1, T2).km
+    #
+    #             if dist < distance_threshold2:
+    #                 trigger = 1
+    #
+    #         if trigger > 0:
+    #             OR_node_added += 1
+    #         else:
+    #
+    #             inland_state_nodes.append(int(df_load_ranks.loc[OR_node_added, 'BusName']))
+    #             OR_node_added += 1
+    #             l_N_Or += -1
+    #
+    #     else:
+    #         OR_node_added += 1
 
     added = 0
-    l_N = l_N-l_N_Or
+    # l_N = l_N-10
     while l_N > 0:
       
         p = int(df_load_ranks.loc[added,'BusName'])
@@ -568,6 +573,14 @@ for NN in RTS:
     
     df_gen_ranks = df_gen_ranks.sort_values(by='MW',ascending=False)
     df_gen_ranks = df_gen_ranks.reset_index(drop=True)
+
+    OR_gen_number = 0
+    for row in df_gen_ranks.iterrows():
+        bus_name_temp = str(row[1]['BusName'])
+        first_2_char = bus_name_temp[:2]
+        if first_2_char=='13':
+            OR_gen_number += 1
+
     
     added = 0
     while g_N > 0:
@@ -593,7 +606,7 @@ for NN in RTS:
                 
                 dist = distance.distance(T1,T2).km
                 
-                if dist < distance_threshold2:
+                if dist < distance_threshold2_gen:
                     
                     trigger = 1
             
@@ -650,7 +663,7 @@ for NN in RTS:
                 
                 dist = distance.distance(T1,T2).km
                 
-                if dist < distance_threshold2:
+                if dist < distance_threshold2_tn:
                     
                     trigger = 1
             
