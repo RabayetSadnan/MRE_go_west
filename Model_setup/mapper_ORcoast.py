@@ -738,4 +738,3 @@ if __name__ == '__main__':
 
         # Plotting the nodes:
         _plot_nodes()
-
