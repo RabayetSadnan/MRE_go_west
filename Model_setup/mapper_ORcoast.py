@@ -15,7 +15,7 @@ from shapely.geometry import Point, Polygon
 from matplotlib.colors import TwoSlopeNorm
 
 
-def _node_selection(target_node_number,df_ranks, df_BA_states, inland_state_nodes, filter_nodes,
+def _node_selection(target_node_number,df_ranks, df_BA_states, select_nodes, filter_nodes,
                     distance_threshold2, selection, criterion):
     added = 0
     while target_node_number > 0:
@@ -47,7 +47,7 @@ def _node_selection(target_node_number,df_ranks, df_BA_states, inland_state_node
 
             trigger = 0
 
-            for d in inland_state_nodes:
+            for d in select_nodes:
                 a = filter_nodes.loc[filter_nodes['Number'] == d, 'Substation Latitude'].values[0]
                 b = filter_nodes.loc[filter_nodes['Number'] == d, 'Substation Longitude'].values[0]
                 T2 = tuple((a, b))
@@ -61,14 +61,14 @@ def _node_selection(target_node_number,df_ranks, df_BA_states, inland_state_node
                 added += 1
             else:
 
-                inland_state_nodes.append(int(df_ranks.loc[added, 'BusName']))
+                select_nodes.append(int(df_ranks.loc[added, 'BusName']))
                 added += 1
                 target_node_number += -1
 
         else:
             added += 1
 
-    return inland_state_nodes
+    return select_nodes
 def _plot_nodes():
     fig, ax = plt.subplots()
     states_gdf.plot(ax=ax, color='white', edgecolor='black', linewidth=0.5)
@@ -181,14 +181,15 @@ def _plot_nodes():
     all_selected_BAs = list(df_BA_states.loc[df_BA_states['Number'].isin(selected_nodes)]['NAME'].values)
     print('Number of included BAs = {}'.format(len(set(all_selected_BAs))))
 
+
 if __name__ == '__main__':
     ###User defined variables###
     RTS = [150]  # Number of nodes to retain (can be a single number or series of numbers to create different topologies automatically)
     MRE = 4  # Number of MRE nodes
     OR_node_preferred = 25
-    NCal_node_preferred = 15
+    NCal_node_preferred = 2
 
-    distance_threshold = 30  # Distance threshold in km, restricts algorithm to select any two nodes that are closer than this number (this is used when selecting a single node in each BA)
+    distance_threshold = 50  # Distance threshold in km, restricts algorithm to select any two nodes that are closer than this number (this is used when selecting a single node in each BA)
     distance_threshold2_load = 50  # Distance threshold in km, restricts algorithm to select any two nodes that are closer than this number (this is used after we selected a single node in each BA)
     distance_threshold2_gen = 10  # for generator distance threshold
     distance_threshold2_tn = 20  # for transmission distance threshold
@@ -653,6 +654,7 @@ if __name__ == '__main__':
         df_load_ranks = df_load_ranks.sort_values(by='MW', ascending=False)
         df_load_ranks = df_load_ranks.reset_index(drop=True)
 
+        # ----------------------------- LOAD ----------------------------------- #
         # 2a: Adding Load nodes:
         # Selecting nodes from Or:
         l_N_Or = OR_node_preferred
@@ -670,6 +672,7 @@ if __name__ == '__main__':
         inland_state_nodes = _node_selection(l_N, df_load_ranks, df_BA_states, inland_state_nodes, filter_nodes, distance_threshold2_load,
                         selection=coast_states, criterion='coast_states')
 
+        # ----------------------------- GENERATION ----------------------------------- #
         # 3 - allocate generation based on reduced gens (screen for overlap)
         gen_nodes_selected = []
         unallocated_gens = [i for i in reduced_gen_buses if i not in nodes_to_avoid]
@@ -687,23 +690,25 @@ if __name__ == '__main__':
 
         # Selecting nodes from Or:
         g_N_or = OR_node_preferred
-        inland_state_nodes = _node_selection(g_N_or, df_gen_ranks, df_BA_states, inland_state_nodes, filter_nodes,
+        gen_nodes_selected = _node_selection(g_N_or, df_gen_ranks, df_BA_states, gen_nodes_selected, filter_nodes,
                         distance_threshold2_gen, selection='Oregon', criterion='state')
 
         # Selecting nodes from Northern California:
         g_N_NCal = NCal_node_preferred
-        inland_state_nodes = _node_selection(g_N_NCal, df_gen_ranks, df_BA_states, inland_state_nodes, filter_nodes,
+        gen_nodes_selected = _node_selection(g_N_NCal, df_gen_ranks, df_BA_states, gen_nodes_selected, filter_nodes,
                         distance_threshold2_gen, selection=Ncal_node_init, criterion='node_init')
 
         # Selecting rest of the nodes:
         g_N = g_N-OR_node_preferred-NCal_node_preferred
-        inland_state_nodes = _node_selection(g_N, df_gen_ranks, df_BA_states, inland_state_nodes, filter_nodes,
+        gen_nodes_selected = _node_selection(g_N, df_gen_ranks, df_BA_states, gen_nodes_selected, filter_nodes,
                         distance_threshold2_gen, selection=coast_states, criterion='coast_states')
 
+        # ----------------------------- TRANSMISSION LINE ----------------------------------- #
         # 4 - allocate transmission nodes based on load as well (screen for overlap, make sure list is for >=345kV)
         trans_nodes_selected = []
         unallocated_trans = [i for i in non_zero if i not in nodes_to_avoid]
         unallocated_trans = [i for i in unallocated_trans if i not in gen_nodes_selected]
+        unallocated_trans = [i for i in unallocated_trans if i not in inland_state_nodes]
 
         load_ranks = np.zeros((len(unallocated_trans), 2))
 
@@ -718,20 +723,19 @@ if __name__ == '__main__':
 
         # Selecting nodes from Or:
         t_N_or = OR_node_preferred
-        inland_state_nodes = _node_selection(t_N_or, df_load_ranks, df_BA_states, inland_state_nodes, filter_nodes,
+        trans_nodes_selected = _node_selection(t_N_or, df_load_ranks, df_BA_states, trans_nodes_selected, filter_nodes,
                         distance_threshold2_tn, selection='Oregon', criterion='state')
 
         # Selecting nodes from Northern California:
         t_N_NCal = NCal_node_preferred
-        inland_state_nodes = _node_selection(t_N_NCal, df_load_ranks, df_BA_states, inland_state_nodes, filter_nodes,
+        trans_nodes_selected = _node_selection(t_N_NCal, df_load_ranks, df_BA_states, trans_nodes_selected, filter_nodes,
                         distance_threshold2_tn, selection=Ncal_node_init, criterion='node_init')
 
         # Selecting rest of the nodes:
         t_N = t_N-OR_node_preferred-NCal_node_preferred
-        inland_state_nodes = _node_selection(t_N, df_load_ranks, df_BA_states, inland_state_nodes, filter_nodes,
+        trans_nodes_selected = _node_selection(t_N, df_load_ranks, df_BA_states, trans_nodes_selected, filter_nodes,
                         distance_threshold2_tn, selection=coast_states, criterion='coast_states')
 
         # Plotting the nodes:
         _plot_nodes()
-
 
